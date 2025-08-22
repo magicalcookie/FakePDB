@@ -21,7 +21,7 @@ import ida_kernwin
 import ida_nalt
 import ida_loader
 
-from .dumpinfo import DumpInfo
+import fakepdb.dumpinfo
 
 class __fakepdb_dumpinfo_actionhandler(ida_kernwin.action_handler_t):
     def __init__(self):
@@ -40,7 +40,7 @@ class __fakepdb_dumpinfo_actionhandler(ida_kernwin.action_handler_t):
 
         filepath_json = os.path.join(idb_dir, pe_filename_ext + ".json")
 
-        dumper = DumpInfo()
+        dumper = fakepdb.dumpinfo.DumpInfo()
         print('FakePDB/dumpinfo:')
         ida_auto.set_ida_state(ida_auto.st_Work)
         dumper.dump_info(filepath_json)

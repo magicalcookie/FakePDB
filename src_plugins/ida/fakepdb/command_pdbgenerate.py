@@ -25,7 +25,9 @@ import ida_kernwin
 import ida_loader
 import ida_nalt
 
-from .dumpinfo import DumpInfo
+import importlib
+
+import fakepdb.dumpinfo
 from .native import Native
 
 #
@@ -51,7 +53,8 @@ class __fakepdb_pdbgeneration_actionhandler(ida_kernwin.action_handler_t):
         else:
             print('FakePDB/generate pdb:')
 
-        dumper = DumpInfo()
+        importlib.reload(fakepdb.dumpinfo)
+        dumper = fakepdb.dumpinfo.DumpInfo()
         native = Native()
 
         #calculate locations

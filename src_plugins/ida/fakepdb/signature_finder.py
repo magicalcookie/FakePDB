@@ -91,13 +91,9 @@ class SignatureFinder:
 
     def __search_resultcount(self, signature): 
         search_results = 0
-     
-        if ida_pro.IDA_SDK_VERSION >= 900:
-            addr_start = ida_ida.inf_get_min_ea()
-            addr_stop = ida_ida.inf_get_max_ea()
-        else:
-            addr_start = ida_ida.cvar.inf.min_ea
-            addr_stop = ida_ida.cvar.inf.max_ea
+
+        addr_start = ida_ida.inf_get_min_ea()
+        addr_stop = ida_ida.inf_get_max_ea()
 
     
         while search_results < 2:

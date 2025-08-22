@@ -20,7 +20,6 @@ import json
 import struct
 import sys
 
-import ida_pro
 import ida_bytes
 import ida_entry
 import ida_funcs
@@ -31,8 +30,6 @@ import ida_name
 import ida_netnode
 import ida_segment
 import ida_typeinf
-if ida_pro.IDA_SDK_VERSION < 900:
-    import ida_struct
 
 
 #
@@ -316,14 +313,17 @@ class DumpInfo():
             'functions' : self.__process_functions(),
             'names'     : self.__process_names(),
             'types'     : self.__process_types(),
+            #'structs'   : self.__process_structs()
         }
-        if ida_pro.IDA_SDK_VERSION < 900:
-            output['structs'] = self.__process_structs()
 
         with open(filepath, "w") as f:
             json.dump(output, f, indent=4)
 
   
+    def __safe_cc(self, info):
+        if hasattr(info, 'cc'):
+            return info.cc
+        return ida_typeinf.CM_CC_STDCALL
     #
     # private/describe
     #
@@ -441,10 +441,6 @@ class DumpInfo():
             return 'special_pstack'
         elif cc == ida_typeinf.CM_CC_SPECIAL:
             return 'special'
-
-        if ida_pro.IDA_SDK_VERSION < 900:
-            if cc == ida_typeinf.CM_CC_MANUAL:
-                return 'manual'
 
         return 'unknown_%s' % cc
 
@@ -662,10 +658,16 @@ class DumpInfo():
 
     def __get_type_data(self, ea):
         tinfo = ida_typeinf.tinfo_t()
-        ida_nalt.get_tinfo(tinfo, ea)
+        if not ida_nalt.get_tinfo(tinfo, ea):
+            func = ida_funcs.get_func(ea)
+            func_tif = ida_typeinf.tinfo_t()
+            ida_nalt.get_tinfo(func_tif, func.start_ea)
+            tinfo = func_tif
+
         func_type_data = ida_typeinf.func_type_data_t()
-        tinfo.get_func_details(func_type_data)
-        
+        if tinfo.get_func_details(func_type_data):
+            return func_type_data
+
         return func_type_data
 
 
@@ -674,16 +676,8 @@ class DumpInfo():
     #
 
     def __process_general(self):
-        info_struct = None
-        if ida_pro.IDA_SDK_VERSION < 900:
-            info_struct = ida_idaapi.get_inf_structure()
-
         #architecture
-        arch = None
-        if ida_pro.IDA_SDK_VERSION >= 900:
-            arch = ida_ida.inf_get_procname()
-        else:
-            arch = info_struct.procname
+        arch = ida_ida.inf_get_procname()
 
         if arch == 'metapc':
             arch = 'x86'
@@ -692,20 +686,12 @@ class DumpInfo():
 
         #bitness
         bitness = 0
-        if ida_pro.IDA_SDK_VERSION >= 900:
-            if ida_ida.inf_is_64bit():
-                bitness = 64
-            elif ida_ida.inf_is_16bit():
-                bitness = 16
-            else:
-                bitness = 32
+        if ida_ida.inf_is_64bit():
+            bitness = 64
+        elif ida_ida.inf_is_16bit():
+            bitness = 16
         else:
-            if info_struct.is_64bit():
-                bitness = 64
-            elif info_struct.is_32bit():
-                bitness = 32
-            else:
-                bitness = 16
+            bitness = 32
 
         result = {
             'filename'    : ida_nalt.get_root_filename(),
@@ -741,9 +727,9 @@ class DumpInfo():
         func_type_data = self.__get_type_data(func.start_ea)
 
         #calling convention
-        info['calling_convention'] = self.__describe_callingconvention(func_type_data.cc)
-        info['memory_model_code']  = self.__describe_memorymodel_code(func_type_data.cc)
-        info['memory_model_data']  = self.__describe_memorymodel_data(func_type_data.cc)
+        info['calling_convention'] = self.__describe_callingconvention(self.__safe_cc(func_type_data))
+        info['memory_model_code']  = self.__describe_memorymodel_code(self.__safe_cc(func_type_data))
+        info['memory_model_data']  = self.__describe_memorymodel_data(self.__safe_cc(func_type_data))
 
         #return type
         info['return_type'] = ida_typeinf.print_tinfo('', 0, 0, ida_typeinf.PRTYPE_1LINE, func_type_data.rettype, '', '')
@@ -787,14 +773,8 @@ class DumpInfo():
         functions = list()
 
         # find EA
-        start = 0
-        end = 0
-        if ida_pro.IDA_SDK_VERSION >= 900:
-            start = ida_ida.inf_get_min_ea()
-            end = ida_ida.inf_get_max_ea()
-        else:
-            start = ida_ida.cvar.inf.min_ea
-            end   = ida_ida.cvar.inf.max_ea
+        start = ida_ida.inf_get_min_ea()
+        end = ida_ida.inf_get_max_ea()
 
         # find first function head chunk in the range
         chunk = ida_funcs.get_fchunk(start)
@@ -884,9 +864,11 @@ class DumpInfo():
                 'ordinal'           : ordinal,
                 'rva'               : ea - self._base,
                 'name'              : ida_entry.get_entry_name(ordinal),
-                'type'              : type,
-                'calling_convention': self.__describe_callingconvention(type_data.cc)
+                'type'              : type
             }
+
+            if hasattr(type_data, 'cc'):
+                export['calling_convention'] = self.__describe_callingconvention(self.__safe_cc(type_data))
 
             exports.append(export)
 
@@ -1023,10 +1005,7 @@ class DumpInfo():
         ti_lib_obj = ida_typeinf.get_idati()
 
         ti_lib_count = 0
-        if ida_pro.IDA_SDK_VERSION >= 900:
-            ida_typeinf.get_ordinal_count(ti_lib_obj)
-        else:
-            ti_lib_count = ida_typeinf.get_ordinal_qty(ti_lib_obj)
+        ti_lib_count = ida_typeinf.get_ordinal_count(ti_lib_obj)
 
         for ti_ordinal in range(1, ti_lib_count + 1):
             ti_info = ida_typeinf.tinfo_t()
